@@ -1,0 +1,43 @@
+name: Docker Compose CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          TMS_HOST=tramway.proxy.rlwy.net
+          TMS_PORT=17159
+          TMS_TOKEN=${{ secrets.TMS_TOKEN }}
+          FMCSA_WEB_KEY=${{ secrets.FMCSA_WEB_KEY }}
+          EOF
+
+      - name: Build services with docker-compose
+        run: docker-compose build
+
+      - name: Run tests with docker-compose
+        run: docker-compose --profile test up --abort-on-container-exit
+
+      - name: Clean up containers
+        if: always()
+        run: docker-compose down -v
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: htmlcov/
