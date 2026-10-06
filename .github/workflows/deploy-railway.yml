@@ -1,0 +1,49 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          TMS_HOST=tramway.proxy.rlwy.net
+          TMS_PORT=17159
+          TMS_TOKEN=${{ secrets.TMS_TOKEN }}
+          FMCSA_WEB_KEY=${{ secrets.FMCSA_WEB_KEY }}
+          EOF
+
+      - name: Build test image
+        run: docker-compose build
+
+      - name: Run tests
+        run: docker-compose --profile test up --abort-on-container-exit
+
+      - name: Clean up
+        if: always()
+        run: docker-compose down -v
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Railway
+        uses: railwayapp/deploy-action@v1
+        with:
+          token: ${{ secrets.RAILWAY_TOKEN }}
+          service: tms-adapter
+          environment: production
+        env:
+          TMS_HOST: ${{ secrets.TMS_HOST }}
+          TMS_PORT: ${{ secrets.TMS_PORT }}
+          TMS_TOKEN: ${{ secrets.TMS_TOKEN }}
+          FMCSA_WEB_KEY: ${{ secrets.FMCSA_WEB_KEY }}
