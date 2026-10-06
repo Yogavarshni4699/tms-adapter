@@ -80,8 +80,9 @@ class TMSClient:
 
     def parse_load_details(self, response: str) -> dict:
         details = {}
-        for line in response.split('\n'):
-            if ':' in line:
-                key, value = line.split(':', 1)
+        # Response format: KEY:VALUE|KEY:VALUE|...
+        for pair in response.split('|'):
+            if ':' in pair:
+                key, value = pair.split(':', 1)
                 details[key.strip()] = value.strip()
         return details
