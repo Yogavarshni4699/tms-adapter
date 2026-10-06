@@ -1,0 +1,44 @@
+version: '3.9'
+
+services:
+  tms-adapter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: happyrobot-tms-adapter
+    environment:
+      - TMS_HOST=${TMS_HOST:-tramway.proxy.rlwy.net}
+      - TMS_PORT=${TMS_PORT:-17159}
+      - TMS_TOKEN=${TMS_TOKEN}
+      - FMCSA_WEB_KEY=${FMCSA_WEB_KEY}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    networks:
+      - tms-network
+
+  tms-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: happyrobot-tms-tests
+    environment:
+      - TMS_HOST=${TMS_HOST:-tramway.proxy.rlwy.net}
+      - TMS_PORT=${TMS_PORT:-17159}
+      - TMS_TOKEN=${TMS_TOKEN}
+      - FMCSA_WEB_KEY=${FMCSA_WEB_KEY}
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./htmlcov:/app/htmlcov
+    networks:
+      - tms-network
+    depends_on:
+      - tms-adapter
+    profiles:
+      - test
+
+networks:
+  tms-network:
+    driver: bridge

@@ -1,0 +1,16 @@
+FROM python:3.14-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt requirements-dev.txt ./
+
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+
+COPY tms_client.py .
+COPY tests/ ./tests/
+
+CMD ["pytest", "tests/test_tms_client.py", "-v", "--cov=tms_client", "--cov-report=html", "--cov-report=term-missing"]
