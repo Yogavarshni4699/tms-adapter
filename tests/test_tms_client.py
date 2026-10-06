@@ -1,9 +1,6 @@
 import pytest
 import os
-from dotenv import load_dotenv
 from tms_client import TMSClient, TMSConnectionError, TMSProtocolError
-
-load_dotenv()
 
 
 class TestTMSClientConnection:
