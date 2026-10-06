@@ -1,0 +1,79 @@
+import os
+import socket
+import time
+
+
+class TMSConnectionError(Exception):
+    pass
+
+
+class TMSProtocolError(Exception):
+    pass
+
+
+class TMSClient:
+
+    def __init__(self, host: str = None, port: int = None, token: str = None, timeout: float = 6.0):
+        self.host = host or os.environ.get("TMS_HOST", "tramway.proxy.rlwy.net")
+        self.port = port or int(os.environ.get("TMS_PORT", 17159))
+        self.token = token or os.environ.get("TMS_TOKEN", "")
+        self.timeout = timeout
+
+    def send_and_receive(self, command: str, recv_time: float = 2.0, max_bytes: int = 8192) -> bytes:
+        payload = f"{command}\r\n".encode()
+
+        try:
+            sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        except socket.timeout as e:
+            raise TMSConnectionError(f"Connection timeout to {self.host}:{self.port}") from e
+        except Exception as e:
+            raise TMSConnectionError(f"Connection failed: {e}") from e
+
+        sock.settimeout(self.timeout)
+
+        try:
+            sock.sendall(payload)
+        except Exception as e:
+            sock.close()
+            raise TMSConnectionError(f"Send failed: {e}") from e
+
+        chunks = []
+        deadline = time.time() + recv_time
+        sock.settimeout(0.5)
+
+        while time.time() < deadline:
+            try:
+                chunk = sock.recv(max_bytes)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            except socket.timeout:
+                continue
+            except Exception as e:
+                sock.close()
+                raise TMSConnectionError(f"Receive failed: {e}") from e
+
+        sock.close()
+        return b"".join(chunks)
+
+    def debug_echo(self) -> str:
+        response = self.send_and_receive("DEBUG_ECHO")
+        return response.decode('utf-8', errors='replace').strip()
+
+    def load_query(self, origin: str, destination: str, equipment: str) -> str:
+        cmd = f"LOAD_QUERY|{self.token}|{origin}|{destination}|{equipment}"
+        response = self.send_and_receive(cmd)
+        return response.decode('utf-8', errors='replace').strip()
+
+    def load_get(self, load_id: str) -> str:
+        cmd = f"LOAD_GET|{self.token}|{load_id}"
+        response = self.send_and_receive(cmd)
+        return response.decode('utf-8', errors='replace').strip()
+
+    def parse_load_details(self, response: str) -> dict:
+        details = {}
+        for line in response.split('\n'):
+            if ':' in line:
+                key, value = line.split(':', 1)
+                details[key.strip()] = value.strip()
+        return details
