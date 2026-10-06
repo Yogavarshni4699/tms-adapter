@@ -5,7 +5,13 @@ from tms_client import TMSClient, TMSConnectionError
 app = Flask(__name__)
 
 API_KEY = os.environ.get("TMS_ADAPTER_API_KEY", "")
-client = TMSClient()
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        _client = TMSClient()
+    return _client
 
 
 def verify_api_key():
@@ -23,7 +29,7 @@ def health():
 @app.route("/health", methods=["GET"])
 def health_check():
     try:
-        client.debug_echo()
+        get_client().debug_echo()
         return jsonify({"status": "healthy", "tms": "connected"}), 200
     except Exception as e:
         return jsonify({"status": "unhealthy", "error": str(e)}), 503
@@ -41,7 +47,7 @@ def search_loads():
     equipment = data.get("equipment")
 
     try:
-        result = client.load_query(origin, destination, equipment)
+        result = get_client().load_query(origin, destination, equipment)
         return jsonify({"result": result}), 200
     except TMSConnectionError as e:
         return jsonify({"error": str(e)}), 503
@@ -54,8 +60,8 @@ def get_load(load_id):
         return auth_error
 
     try:
-        response = client.load_get(load_id)
-        details = client.parse_load_details(response)
+        response = get_client().load_get(load_id)
+        details = get_client().parse_load_details(response)
         return jsonify(details), 200
     except TMSConnectionError as e:
         return jsonify({"error": str(e)}), 503
