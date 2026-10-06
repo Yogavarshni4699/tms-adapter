@@ -21,14 +21,14 @@ jobs:
           EOF
 
       - name: Build test image
-        run: docker-compose build
+        run: docker compose build
 
       - name: Run tests
-        run: docker-compose --profile test up --abort-on-container-exit
+        run: docker compose --profile test up --abort-on-container-exit
 
       - name: Clean up
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
 
   deploy:
     needs: test

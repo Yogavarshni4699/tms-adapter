@@ -26,14 +26,14 @@ jobs:
           EOF
 
       - name: Build services with docker-compose
-        run: docker-compose build
+        run: docker compose build
 
       - name: Run tests with docker-compose
-        run: docker-compose --profile test up --abort-on-container-exit
+        run: docker compose --profile test up --abort-on-container-exit
 
       - name: Clean up containers
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
 
       - name: Upload coverage reports
         if: always()
