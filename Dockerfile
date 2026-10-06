@@ -13,9 +13,7 @@ COPY tms_client.py .
 COPY app.py .
 COPY Procfile .
 
-EXPOSE 8000
-
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD python -c "import os; import socket; s=socket.socket(); s.connect(('127.0.0.1', int(os.environ.get('PORT', 5000)))); s.close()" || exit 1
 
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8000"]
+CMD gunicorn app:app --bind 0.0.0.0:$PORT
