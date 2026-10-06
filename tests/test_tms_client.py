@@ -69,25 +69,7 @@ class TestTMSResponseParsing:
         return TMSClient()
 
     def test_parse_load_details_known_format(self):
-        response = """LOAD_ID: LD00903
-ORIG_CITY: Savannah
-ORIG_STATE: GA
-ORIG_ZIP: 31401
-DEST_CITY: Omaha
-DEST_STATE: NE
-DEST_ZIP: 68102
-PICKUP_DT: 20261008120900
-DELIVERY_DT: 20261010050900
-EQTYPE: REEFER
-RATE: 2038
-WEIGHT: 6186
-COMMODITY: Machinery
-PIECES: 6
-MILES: 1036
-DIMS: 48ft x 8ft x 9ft
-NOTES: Pickup numbers on rate con.
-STATUS: OPEN
-MAX_BUY: 2184"""
+        response = "LOAD_ID:LD00903|ORIG_CITY:Savannah|ORIG_STATE:GA|ORIG_ZIP:31401|DEST_CITY:Omaha|DEST_STATE:NE|DEST_ZIP:68102|PICKUP_DT:20261008120900|DELIVERY_DT:20261010050900|EQTYPE:REEFER|RATE:2038|WEIGHT:6186|COMMODITY:Machinery|PIECES:6|MILES:1036|DIMS:48ft x 8ft x 9ft|NOTES:Pickup numbers on rate con.|STATUS:OPEN|MAX_BUY:2184"
 
         client = TMSClient()
         details = client.parse_load_details(response)
