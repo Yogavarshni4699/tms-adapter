@@ -57,16 +57,24 @@ class TMSClient:
         return b"".join(chunks)
 
     def debug_echo(self) -> str:
-        response = self.send_and_receive("DEBUG_ECHO")
+        cmd = f"CMD:DEBUG_ECHO|AUTH:{self.token}"
+        response = self.send_and_receive(cmd)
         return response.decode('utf-8', errors='replace').strip()
 
-    def load_query(self, origin: str, destination: str, equipment: str) -> str:
-        cmd = f"LOAD_QUERY|{self.token}|{origin}|{destination}|{equipment}"
+    def load_query(self, origin: str = None, destination: str = None, equipment: str = None, max_results: int = 10) -> str:
+        cmd = f"CMD:LOAD_QUERY|AUTH:{self.token}"
+        if origin:
+            cmd += f"|ORIG_STATE:{origin}"
+        if destination:
+            cmd += f"|DEST_STATE:{destination}"
+        if equipment:
+            cmd += f"|EQTYPE:{equipment}"
+        cmd += f"|MAX_RESULTS:{max_results}"
         response = self.send_and_receive(cmd)
         return response.decode('utf-8', errors='replace').strip()
 
     def load_get(self, load_id: str) -> str:
-        cmd = f"LOAD_GET|{self.token}|{load_id}"
+        cmd = f"CMD:LOAD_GET|AUTH:{self.token}|LOAD_ID:{load_id}"
         response = self.send_and_receive(cmd)
         return response.decode('utf-8', errors='replace').strip()
 
