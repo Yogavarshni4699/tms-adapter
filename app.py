@@ -47,8 +47,10 @@ def search_loads():
     equipment = data.get("equipment")
 
     try:
-        result = get_client().load_query(origin, destination, equipment)
-        return jsonify({"result": result}), 200
+        loads = get_client().load_query(origin, destination, equipment)
+        if isinstance(loads, dict) and "error" in loads:
+            return jsonify(loads), 400
+        return jsonify({"loads": loads, "count": len(loads)}), 200
     except TMSConnectionError as e:
         return jsonify({"error": str(e)}), 503
 
