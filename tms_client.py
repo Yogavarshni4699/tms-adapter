@@ -1,6 +1,10 @@
 import os
 import socket
 import time
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("tms_client")
 
 
 class TMSConnectionError(Exception):
@@ -54,14 +58,58 @@ class TMSClient:
                 raise TMSConnectionError(f"Receive failed: {e}") from e
 
         sock.close()
-        return b"".join(chunks)
+        result = b"".join(chunks)
+        return result
 
     def debug_echo(self) -> str:
         cmd = f"CMD:DEBUG_ECHO|AUTH:{self.token}"
         response = self.send_and_receive(cmd)
         return response.decode('utf-8', errors='replace').strip()
 
-    def load_query(self, origin: str = None, destination: str = None, equipment: str = None, max_results: int = 10) -> list:
+    def _redact(self, cmd: str) -> str:
+        return cmd.replace(self.token, "***") if self.token else cmd
+
+    def _query_raw(self, cmd: str, retries: int = 3):
+        """Send a LOAD_QUERY command with retries. Returns a list of parsed
+        loads on success, or {"error": ...} if every attempt faulted
+        (timeout, malformed, or partial response -- see TMS fault injection)."""
+        last_fault = None
+        safe_cmd = self._redact(cmd)
+        for attempt in range(1, retries + 1):
+            response = self.send_and_receive(cmd)
+            raw = response.decode('utf-8', errors='replace').strip()
+            logger.info(f"LOAD_QUERY attempt={attempt}/{retries} cmd=\"{safe_cmd}\" response=\"{raw[:200]}\"")
+
+            if not raw:
+                last_fault = "TIMEOUT|MSG:No response from TMS (fault injection)"
+                continue
+            if raw.startswith("ERR|CODE:MALFORMED"):
+                last_fault = raw
+                continue
+            if "END" not in raw and not raw.startswith("ERR"):
+                last_fault = f"PARTIAL|MSG:Response missing END terminator: {raw[:100]}"
+                continue
+            if raw.startswith("ERR"):
+                logger.warning(f"LOAD_QUERY error cmd=\"{safe_cmd}\" error=\"{raw}\"")
+                return {"error": raw}
+
+            loads = []
+            for line in raw.split('\n'):
+                line = line.strip()
+                if line == "END":
+                    break
+                if line and ":" in line:
+                    load = self.parse_load_details(line)
+                    if load:
+                        loads.append(load)
+            logger.info(f"LOAD_QUERY success cmd=\"{safe_cmd}\" loads_returned={len(loads)}")
+            return loads
+
+        logger.error(f"LOAD_QUERY exhausted retries cmd=\"{safe_cmd}\" last_fault=\"{last_fault}\"")
+        return {"error": f"ERR|CODE:FAULT_RETRY_EXHAUSTED|MSG:{last_fault}"}
+
+    def load_query(self, origin: str = None, destination: str = None, equipment: str = None,
+                    max_results: int = 10, retries: int = 3, broaden_on_fault: bool = True) -> list:
         cmd = f"CMD:LOAD_QUERY|AUTH:{self.token}"
         if origin:
             cmd += f"|ORIG_STATE:{origin}"
@@ -70,32 +118,60 @@ class TMSClient:
         if equipment:
             cmd += f"|EQTYPE:{equipment}"
         cmd += f"|MAX_RESULTS:{max_results}"
-        print(f"[DEBUG TMS] Sending: {cmd}")
-        response = self.send_and_receive(cmd)
-        raw = response.decode('utf-8', errors='replace').strip()
-        print(f"[DEBUG TMS] Raw response: {repr(raw[:300])}")
 
-        # Parse multiple records until END
-        loads = []
-        for line in raw.split('\n'):
-            line = line.strip()
-            if line == "END":
-                break
-            if line.startswith("ERR"):
-                print(f"[DEBUG TMS] Error: {line}")
-                return {"error": line}
-            if line and ":" in line:
-                load = self.parse_load_details(line)
-                if load:
-                    loads.append(load)
-                    print(f"[DEBUG TMS] Parsed load: {load.get('LOAD_ID', 'N/A')}")
-        print(f"[DEBUG TMS] Total loads parsed: {len(loads)}")
-        return loads
+        result = self._query_raw(cmd, retries=retries)
+        if not (isinstance(result, dict) and "error" in result):
+            return result
+        if not broaden_on_fault:
+            return result
 
-    def load_get(self, load_id: str) -> str:
+        # The exact filtered query faulted on every retry. Rather than giving
+        # up, drop down to a single broad filter (whichever we have) with a
+        # higher result cap, fetch what we can, and filter server-side so we
+        # still return live/fresh loads instead of stale or empty data.
+        broad_field, broad_value = None, None
+        if equipment:
+            broad_field, broad_value = "EQTYPE", equipment
+        elif origin:
+            broad_field, broad_value = "ORIG_STATE", origin
+        elif destination:
+            broad_field, broad_value = "DEST_STATE", destination
+        else:
+            return result
+
+        broad_cmd = f"CMD:LOAD_QUERY|AUTH:{self.token}|{broad_field}:{broad_value}|MAX_RESULTS:50"
+        broad_result = self._query_raw(broad_cmd, retries=retries)
+        if isinstance(broad_result, dict) and "error" in broad_result:
+            return result  # broad attempt faulted too; surface the original fault
+
+        def matches(load):
+            if origin and load.get("ORIG_STATE", "").strip() != origin:
+                return False
+            if destination and load.get("DEST_STATE", "").strip() != destination:
+                return False
+            if equipment and load.get("EQTYPE", "").strip() != equipment:
+                return False
+            return True
+
+        return [l for l in broad_result if matches(l)]
+
+    def load_get(self, load_id: str, retries: int = 3) -> str:
         cmd = f"CMD:LOAD_GET|AUTH:{self.token}|LOAD_ID:{load_id}"
-        response = self.send_and_receive(cmd)
-        return response.decode('utf-8', errors='replace').strip()
+        safe_cmd = self._redact(cmd)
+
+        for attempt in range(1, retries + 1):
+            response = self.send_and_receive(cmd)
+            raw = response.decode('utf-8', errors='replace').strip()
+            logger.info(f"LOAD_GET attempt={attempt}/{retries} cmd=\"{safe_cmd}\" response=\"{raw[:200]}\"")
+
+            if not raw:
+                continue
+            if raw.startswith("ERR|CODE:MALFORMED"):
+                continue
+            return raw
+
+        logger.error(f"LOAD_GET exhausted retries cmd=\"{safe_cmd}\"")
+        return "ERR|CODE:FAULT_RETRY_EXHAUSTED|MSG:No valid response after retries"
 
     def parse_load_details(self, response: str) -> dict:
         details = {}

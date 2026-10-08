@@ -59,7 +59,7 @@ class TestTMSClientCommands:
     def test_load_query_command(self, client):
         response = client.load_query("GA", "NE", "REEFER")
         assert response is not None
-        assert isinstance(response, str)
+        assert isinstance(response, (list, dict))
 
 
 class TestTMSResponseParsing:
