@@ -168,7 +168,14 @@ class TMSClient:
                 continue
             if raw.startswith("ERR|CODE:MALFORMED"):
                 continue
-            return raw
+            if raw.startswith("ERR"):
+                return raw
+
+            # Success shape is a single record line followed by an END
+            # terminator line; strip the terminator so it doesn't get
+            # absorbed into the last field's value.
+            first_line = raw.split('\n')[0].strip()
+            return first_line
 
         logger.error(f"LOAD_GET exhausted retries cmd=\"{safe_cmd}\"")
         return "ERR|CODE:FAULT_RETRY_EXHAUSTED|MSG:No valid response after retries"
