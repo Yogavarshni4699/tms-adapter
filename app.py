@@ -31,6 +31,22 @@ def _cache_key(origin, destination, equipment):
     return f"{origin or ''}|{destination or ''}|{equipment or ''}"
 
 
+# Fields TMS sends as space-padded strings but that are semantically numbers.
+# Converted to real JSON numbers so consumers don't have to parse strings.
+_NUMERIC_FIELDS = {"RATE", "MAX_BUY", "WEIGHT", "MILES", "PIECES"}
+
+
+def _sanitize_load(load: dict) -> dict:
+    if "LOAD_ID" not in load:
+        return load  # error shape (CODE/MSG), not a load record -- leave as-is
+    sanitized = dict(load)
+    for field in _NUMERIC_FIELDS:
+        value = sanitized.get(field)
+        if isinstance(value, str) and value.strip().isdigit():
+            sanitized[field] = int(value.strip())
+    return sanitized
+
+
 def verify_api_key():
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if not token or token != API_KEY:
@@ -82,6 +98,7 @@ def search_loads():
             logger.error(f"SEARCH fault, no usable cache key=\"{key}\" cache_age={age}")
             return jsonify(loads), 400
 
+        loads = [_sanitize_load(l) for l in loads]
         _search_cache[key] = {"loads": loads, "ts": time.time()}
         load_ids = [l.get("LOAD_ID", "?").strip() for l in loads]
         logger.info(f"SEARCH live key=\"{key}\" count={len(loads)} load_ids={load_ids}")
@@ -104,7 +121,7 @@ def get_load(load_id):
 
     try:
         response = get_client().load_get(load_id)
-        details = get_client().parse_load_details(response)
+        details = _sanitize_load(get_client().parse_load_details(response))
         logger.info(f"GET_LOAD load_id=\"{load_id}\" result={details}")
         return jsonify(details), 200
     except TMSConnectionError as e:
