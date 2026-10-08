@@ -70,8 +70,10 @@ class TMSClient:
         if equipment:
             cmd += f"|EQTYPE:{equipment}"
         cmd += f"|MAX_RESULTS:{max_results}"
+        print(f"[DEBUG TMS] Sending: {cmd}")
         response = self.send_and_receive(cmd)
         raw = response.decode('utf-8', errors='replace').strip()
+        print(f"[DEBUG TMS] Raw response: {repr(raw[:300])}")
 
         # Parse multiple records until END
         loads = []
@@ -80,11 +82,14 @@ class TMSClient:
             if line == "END":
                 break
             if line.startswith("ERR"):
+                print(f"[DEBUG TMS] Error: {line}")
                 return {"error": line}
             if line and ":" in line:
                 load = self.parse_load_details(line)
                 if load:
                     loads.append(load)
+                    print(f"[DEBUG TMS] Parsed load: {load.get('LOAD_ID', 'N/A')}")
+        print(f"[DEBUG TMS] Total loads parsed: {len(loads)}")
         return loads
 
     def load_get(self, load_id: str) -> str:
